@@ -84,24 +84,32 @@ int main(int argc, char** argv){
   std::cout << A4.norm() <<std::endl;
   std::cout << "Done!" <<std::endl;
 
-  std::cout << "Check column permute(): swap cols 0 and 2 " <<std::endl;
+  std::cout << "Check column M.permute(): swap cols 0 and 2 " <<std::endl;
   A4.permute(std::vector<BasicSparse::uSpInt>(),std::vector<BasicSparse::uSpInt>({{2,1,0}}));
   A4.print();
 
-  std::cout << "Check row permute(): swap rows 4 and 1 (note row 1 was empty)" <<std::endl;
+  std::cout << "Check row M.permute(): swap rows 4 and 1 (note row 1 was empty)" <<std::endl;
   A4.permute(std::vector<BasicSparse::uSpInt>({{0,4,2,3,1,5,6}}),std::vector<BasicSparse::uSpInt>());
   A4.print();
 
-  std::cout << "Check row permute(): swap rows 5 and 6 (breaks row ordering!)" <<std::endl;
+  std::cout << "Check row M.permute(): swap rows 5 and 6 (breaks row ordering!)" <<std::endl;
   A4.permute(std::vector<BasicSparse::uSpInt>({{0,1,2,3,1,6,5}}),std::vector<BasicSparse::uSpInt>());
   A4.print();
 
-  std::cout << "Check drop(1.0e-10)" <<std::endl;
+  std::cout << "Check M.drop(1.0e-10)" <<std::endl;
   A4.drop(1.0e-10);
   A4.print();
 
-  std::cout << "Check addition" <<std::endl;
-  add(std::complex<double>(1.0),A4,std::complex<double>(-1.0),A4,0,1).print();
+  std::cout << "Check addition M+M" <<std::endl;
+  Add(std::complex<double>(1.0),A4,std::complex<double>(-1.0),A4,0,1).print();
+
+  std::cout << "Check M+=M" <<std::endl;
+  A4+=A4;
+  A4.print();
+
+  std::cout << "Check M-=M" <<std::endl;
+  A4-=A4;
+  A4.print();
   
   return 0;
 }

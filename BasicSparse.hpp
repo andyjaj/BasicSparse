@@ -25,15 +25,30 @@ namespace BasicSparse {
 
   template <class T>
   class SparseStorage;
+
+  template <class T>
+  SparseStorage<T> Transpose(const SparseStorage<T>& A, bool conjugate);
+
+  template <class T>
+  SparseStorage<T> Permute(const SparseStorage<T>& A, const std::vector<uSpInt>& new_rows_inv, const std::vector<uSpInt>& new_cols);  
   
   template <class T>
-  SparseStorage<T> add(T alpha, const SparseStorage<T>& A, T beta, const SparseStorage<T>& B, bool conjA=0, bool conjB=0);
+  SparseStorage<T> Add(T alpha, const SparseStorage<T>& A, T beta, const SparseStorage<T>& B, bool conjA=0, bool conjB=0);
 
   template <class T>
-  uSpInt scatter(const SparseStorage<T>& A, uSpInt j, T beta, std::vector<uSpInt>& w, std::vector<T>& x, uSpInt mark, SparseStorage<T>& C, uSpInt nz, bool conjugate);
+  SparseStorage<T> Multiply(T alpha, const SparseStorage<T>& A, T beta, const SparseStorage<T>& B, bool conjA=0, bool conjB=0);
 
+  template <class T>
+  uSpInt Scatter(const SparseStorage<T>& A, uSpInt j, T beta, std::vector<uSpInt>& w, std::vector<T>& x, uSpInt mark, SparseStorage<T>& C, uSpInt nz, bool conjugate);
+
+  template <class T>
+  void swap(SparseStorage<T>& LHS,SparseStorage<T>& RHS);
+  
   template<class T>
-  T conj(T val); 
+  T Conj(T val);
+  
+  template<class U>
+  std::complex<U> Conj(std::complex<U> val); //overload (with a template param)
   
   ///////////////////////////////////////////////////////////////
   ///////////////////////////////////////////////////////////////
@@ -78,17 +93,20 @@ namespace BasicSparse {
     SparseStorage<T>& transpose(bool conjugate=0);
     SparseStorage<T>& permute(const std::vector<uSpInt>& new_rows, const std::vector<uSpInt>& new_col);
     SparseStorage<T>& drop(T tol = T{}); //drops values with abs val smaller than tol
+    SparseStorage<T>& operator=(SparseStorage<T> RHS);
+    SparseStorage<T>& operator+=(SparseStorage<T> RHS);
+    SparseStorage<T>& operator-=(SparseStorage<T> RHS);
     
     void entry(uSpInt r, uSpInt c, T val); //make an entry in triplet form
     
     double norm() const;
     void print() const;
-
-    friend SparseStorage<T> add<T>(T alpha, const SparseStorage<T>& A, T beta, const SparseStorage<T>& B, bool conjA, bool conjB);
         
   };
 
-  //out of class definitions
+  //
+  //Out-of-class member definitions
+  //
   
   template <class U>  
   SparseStorage<U>& SparseStorage<U>::compress(){
@@ -158,63 +176,18 @@ namespace BasicSparse {
   }
 
   template <class U>  
+
+
   SparseStorage<U>& SparseStorage<U>::transpose(bool conjugate){
-    if (!compressed) compress();
-    
-    std::vector<uSpInt> w(rows,0); //workspace of size rows
-    
-    for (uSpInt col_ptr=0; col_ptr<p[cols]; ++col_ptr) w[i[col_ptr]]++; //count number in each row
-    std::vector<uSpInt> cp(rows+1); //compressed col ptrs
-    std::partial_sum(w.begin(),w.end(),cp.begin()+1); //populate array of column pointers
-    cp[0]=0; //(1st element should be zero)
-    std::copy(cp.begin(),cp.begin()+rows,w.begin()); //copy the [0 to (rows-1)] row totals back into w, which will be used to update the positions in each (new) column
-    
-    std::vector<uSpInt> ci(nonzeros()); //compressed col ptrs
-    std::vector<U> cx(nonzeros()); //compressed col ptrs
-    
-    for (uSpInt j = 0; j < cols; ++j){ //loop over cols
-      for (uSpInt col_ptr = p[j]; col_ptr < p[j+1]; ++col_ptr){//go through non zero elements in col
-	uSpInt q = w[i[col_ptr]]++; //new (transposed) column pointer
-	ci[q]=j; ///new row is old column
-	//if type is complex, conjugate if necessary
-	cx[q]= conjugate ? cx[q]=conj(x[col_ptr]) : cx[q]=x[col_ptr]; 
-      }
-    }
-    
-    //update this array
-    std::swap(rows,cols);
-    i=ci;
-    p=cp;
-    x=cx;
-    
+    SparseStorage<U> ans(Transpose(*this,conjugate));
+    swap(*this,ans);
     return *this;
   }
 
   template <class U>  
   SparseStorage<U>& SparseStorage<U>::permute(const std::vector<uSpInt>& new_rows_inv, const std::vector<uSpInt>& new_cols){
-    if (!compressed) compress();
-
-    uSpInt nz=0;
-    
-    std::vector<uSpInt> ci(nonzeros());
-    std::vector<uSpInt> cp(cols+1);
-    std::vector<U> cx(nonzeros());
-
-    for (uSpInt n = 0; n < cols; ++n){ //loop through all cols
-      cp[n] = nz; // column n of new is column new_cols[n] of original
-      uSpInt j = new_cols.size() ? new_cols[n] : n;
-      for (uSpInt t = p[j]; t < p[j+1]; ++t)
-        {
-	  cx[nz] = x[t];  /* row i of original is row new_rows_inv[i] of new */
-	  ci[nz++] = new_rows_inv.size() ? (new_rows_inv[i[t]]) : i[t];
-        }
-    }
-    cp[cols] = nz; //update final col pointer
-
-    i=ci;
-    p=cp;
-    x=cx;
-    
+    SparseStorage<U> ans(Permute(*this,new_rows_inv,new_cols));
+    swap(*this,ans);
     return *this;
   }
 
@@ -237,6 +210,24 @@ namespace BasicSparse {
     p[cols] = nz;
     i.resize(nz);// this also updates the number of nonzeros
     x.resize(nz);
+    return *this;
+  }
+
+  template <class U>
+  SparseStorage<U>& SparseStorage<U>::operator=(SparseStorage<U> RHS){
+    swap(*this,RHS);
+    return *this;
+  }
+
+  template <class U>
+  SparseStorage<U>& SparseStorage<U>::operator+=(SparseStorage<U> RHS){
+    *this=Add(U(1.0),*this,U(1.0),RHS);
+    return *this;
+  }
+
+  template <class U>
+  SparseStorage<U>& SparseStorage<U>::operator-=(SparseStorage<U> RHS){
+    *this=Add(U(1.0),*this,U(-1.0),RHS);
     return *this;
   }
   
@@ -288,16 +279,73 @@ namespace BasicSparse {
     return (ans) ;
   }
 
+  //
+  //Non-member function defs
+  //
+   
   template <class U>
-  SparseStorage<U> add(U alpha, const SparseStorage<U>& A, U beta, const SparseStorage<U>& B, bool conjA, bool conjB){
+  SparseStorage<U> Transpose(const SparseStorage<U>& A, bool conjugate){
+    if (!A.compressed) return SparseStorage<U>(0,0);
+    
+    std::vector<uSpInt> w(A.rows,0); //workspace of size rows
+    
+    for (uSpInt idx=0; idx<A.p[A.cols]; ++idx) w[A.i[idx]]++; //count number in each row
+    std::vector<uSpInt> cp(A.rows+1); //compressed col ptrs
+    std::partial_sum(w.begin(),w.end(),cp.begin()+1); //populate array of column pointers
+    cp[0]=0; //(1st element should be zero)
+    std::copy(cp.begin(),cp.begin()+A.rows,w.begin()); //copy the [0 to (rows-1)] row totals back into w, which will be used to update the positions in each (new) column
+    
+    std::vector<uSpInt> ci(A.nonzeros()); //compressed col ptrs
+    std::vector<U> cx(A.nonzeros()); //compressed col ptrs
+    
+    for (uSpInt j = 0; j < A.cols; ++j){ //loop over cols
+      for (uSpInt col_ptr = A.p[j]; col_ptr < A.p[j+1]; ++col_ptr){//go through non zero elements in col
+	uSpInt q = w[A.i[col_ptr]]++; //new (transposed) column pointer
+	ci[q]=j; ///new row is old column
+	//if type is complex, conjugate if necessary
+	cx[q]= conjugate ? cx[q]=Conj(A.x[col_ptr]) : cx[q]=A.x[col_ptr]; 
+      }
+    }
+    
+    //update this array
+    return SparseStorage<U>(A.cols,A.rows,std::move(ci),std::move(cp),std::move(cx),A.compressed);
+  }
+
+  template <class U>
+  SparseStorage<U> Permute(const SparseStorage<U>& A, const std::vector<uSpInt>& new_rows_inv, const std::vector<uSpInt>& new_cols){
+    if (!A.compressed) return SparseStorage<U>(0,0);
+
+    uSpInt nz=0;
+    
+    std::vector<uSpInt> ci(A.nonzeros());
+    std::vector<uSpInt> cp(A.cols+1);
+    std::vector<U> cx(A.nonzeros());
+
+    for (uSpInt n = 0; n < A.cols; ++n){ //loop through all cols
+      cp[n] = nz; // column n of new is column new_cols[n] of original
+      uSpInt j = new_cols.size() ? new_cols[n] : n;
+      for (uSpInt t = A.p[j]; t < A.p[j+1]; ++t)
+        {
+	  cx[nz] = A.x[t];  //row i of original is row new_rows_inv[i] of new
+	  ci[nz++] = new_rows_inv.size() ? (new_rows_inv[A.i[t]]) : A.i[t];
+        }
+    }
+    cp[A.cols] = nz; //update final col pointer
+
+    return SparseStorage<U>(A.rows,A.cols,std::move(ci),std::move(cp),std::move(cx),A.compressed);
+  }
+ 
+  
+  template <class U>
+  SparseStorage<U> Add(U alpha, const SparseStorage<U>& A, U beta, const SparseStorage<U>& B, bool conjA, bool conjB){
 
     if (!A.compressed || !B.compressed){
-      std::cerr << "Trying to add arrays not in csc form " << A.compressed << " " << B.compressed << std::endl;
+      std::cerr << "Trying to Add arrays not in csc form " << A.compressed << " " << B.compressed << std::endl;
       abort();
     }
     
     if (A.rows != B.rows || A.cols != B.cols) {
-      std::cerr << "Trying to add arrays of different shape " << A.rows << " by " << A.cols << " and " << B.rows << " by " << B.cols << std::endl;
+      std::cerr << "Trying to Add arrays of different shape " << A.rows << " by " << A.cols << " and " << B.rows << " by " << B.cols << std::endl;
       abort();
     }
 
@@ -312,24 +360,31 @@ namespace BasicSparse {
     uSpInt nz=0;
     for (uSpInt col=0; col<cols; ++col){
       C.p[col]=nz; //col of C starts here
-      nz=scatter(A,col,alpha,w,x,col+1,C,nz,conjA); //updates nz and populates
-      nz=scatter(B,col,beta,w,x,col+1,C,nz,conjB); //updates nz and populates
+      nz=Scatter(A,col,alpha,w,x,col+1,C,nz,conjA); //updates nz and populates
+      nz=Scatter(B,col,beta,w,x,col+1,C,nz,conjB); //updates nz and populates
       for(uSpInt idx = C.p[col] ; idx < nz ; ++idx){
 	C.x[idx] = x[C.i[idx]];//use working x vector to populate C.x[]
       }
     }
-    //we really want the answer to be row ordered to avoid surprises
     C.p[cols]=nz;// update final new nz
     C.i.resize(nz);
     C.x.resize(nz);
-    
-    return C;
+
+    //we really want the answer to be row ordered to avoid surprises
+    return C.transpose().transpose();
   }
 
   template <class U>
-  uSpInt scatter(const SparseStorage<U>& A, uSpInt j, U beta, std::vector<uSpInt>& w, std::vector<U>& x, uSpInt mark, SparseStorage<U>& C, uSpInt nz, bool conjugate){
+  SparseStorage<U> Multiply(U alpha, const SparseStorage<U>& A, U beta, const SparseStorage<U>& B, bool conjA, bool conjB){
+    //this needs a possible threaded version - maybe in a separate include file
+    //do some stuff
+    return SparseStorage<U>(A.rows,B.cols,std::vector<uSpInt>(),std::vector<uSpInt>(),std::vector<U>(),1);
+  }
+  
+  template <class U>
+  uSpInt Scatter(const SparseStorage<U>& A, uSpInt j, U beta, std::vector<uSpInt>& w, std::vector<U>& x, uSpInt mark, SparseStorage<U>& C, uSpInt nz, bool conjugate){
     if (!A.compressed){
-      std::cerr << "Trying to scatter for array not in csc form" << std::endl;
+      std::cerr << "Trying to Scatter for array not in csc form" << std::endl;
       abort();
     }
     for (uSpInt idx=A.p[j]; idx<A.p[j+1];++idx){
@@ -337,19 +392,41 @@ namespace BasicSparse {
       if (w[row]<mark){
 	w[row]=mark; //newentry for this row in col j
 	C.i[nz++]=row;
-	x[row]=beta* (conjugate ? conj(A.x[idx]) : A.x[idx]);
+	x[row]=beta* (conjugate ? Conj(A.x[idx]) : A.x[idx]);
       }
-      else x[row]+=beta*(conjugate ? conj(A.x[idx]) : A.x[idx]);
+      else x[row]+=beta*(conjugate ? Conj(A.x[idx]) : A.x[idx]);
     }
     return nz;
   }
 
+  template <class U>
+  void swap(SparseStorage<U>& LHS,SparseStorage<U>& RHS){
+    std::swap(LHS.rows,RHS.rows);
+    std::swap(LHS.cols,RHS.cols);
+    std::swap(LHS.i,RHS.i);
+    std::swap(LHS.p,RHS.p);
+    std::swap(LHS.x,RHS.x);
+    std::swap(LHS.compressed,RHS.compressed);
+  }
+
   template<class U>
-  U conj(U val) {return val;}
+  U Conj(U val) {return val;}
   
-  template<>
-  inline std::complex<double> conj(std::complex<double> val) {
-    return std::conj(val);
+  template<class U>
+  std::complex<U> Conj(std::complex<U> val) {return std::conj(val);}
+
+  template<class U>
+  inline SparseStorage<U> operator+(SparseStorage<U> lhs, const SparseStorage<U>& rhs)
+  {
+    lhs += rhs;
+    return lhs;
+  }
+
+  template<class U>
+  inline SparseStorage<U> operator-(SparseStorage<U> lhs, const SparseStorage<U>& rhs)
+  {
+    lhs -= rhs;
+    return lhs;
   }
   
 }
