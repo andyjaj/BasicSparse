@@ -110,6 +110,19 @@ int main(int argc, char** argv){
   std::cout << "Check M-=M" <<std::endl;
   A4-=A4;
   A4.print();
+
+  std::cout << "Check ArrayCatByRow: [M M]" <<std::endl;
+  A4.x[0]=std::complex<double>(-2.0,0.11);
+  A4.x[1]=std::complex<double>(5,0.0);
+  A4.print();
+
+  for (auto p : A4.p){std::cout << p << " ";}
+  std::cout << std::endl;
+  
+  BasicSparse::ArrayCatByRow(A4,A4).print();
+
+  for (auto p : A4.p){std::cout << p << " ";}
+  std::cout << std::endl;
   
   return 0;
 }
@@ -117,13 +130,13 @@ int main(int argc, char** argv){
 template<class T>
 void SparseStorageInfo(BasicSparse::SparseStorage<T>& SS){
   std::cout << "SparseStorageInfo" << std::endl;
-  std::cout <<SS.rows <<", " << SS.cols << ", " << SS.nonzeros() << ", " << SS.compressed << std::endl ;
+  std::cout <<SS.rows <<", " << SS.cols << ", " << SS.nonzeros() << ", " << SS.compressed() << std::endl ;
 }
 
 template<class T>
 int SparseStorageCheck(BasicSparse::SparseStorage<T>& SS,size_t rows,size_t cols,size_t nz,bool compressed){
   
-  if (rows==SS.rows && cols==SS.cols && nz == SS.nonzeros() && compressed == SS.compressed){
+  if (rows==SS.rows && cols==SS.cols && nz == SS.nonzeros() && compressed == SS.compressed()){
     if (!compressed && SS.i.size()!=SS.p.size()){
       return -1;
     }
