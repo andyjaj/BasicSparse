@@ -28,7 +28,7 @@ namespace BasicSparse {
   class SparseStorage;
 
   template <class T>
-  SparseStorage<T> Transpose(const SparseStorage<T>& A, bool conjugate);
+  SparseStorage<T> Transpose(const SparseStorage<T>& A, bool conjugate=0);
 
   template <class T>
   SparseStorage<T> Permute(const SparseStorage<T>& A, const std::vector<uSpInt>& new_rows_inv, const std::vector<uSpInt>& new_cols);  
@@ -40,7 +40,7 @@ namespace BasicSparse {
   SparseStorage<T> Multiply(T alpha, const SparseStorage<T>& A, T beta, const SparseStorage<T>& B, bool conjA=0, bool conjB=0);
 
   template <class T>
-  std::vector<uSpInt> SubArrayNonZeros(const SparseStorage<T>& L,const SparseStorage<T>& R,uSpInt FirstRcol,uSpInt LastRcol);
+  std::vector<uSpInt> MultiplySubArrayNonZeros(const SparseStorage<T>& L,const SparseStorage<T>& R,uSpInt FirstRcol,uSpInt LastRcol);
   
   template <class T>
   SparseStorage<T> SubArrayMultiply(const SparseStorage<T>& L,const SparseStorage<T>& R,uSpInt FirstRcol,uSpInt LastRcol);
@@ -399,10 +399,36 @@ namespace BasicSparse {
     return SparseStorage<U>(A.rows,B.cols,std::vector<uSpInt>(),std::vector<uSpInt>(),std::vector<U>(),1);
   }
 
-  /*
   template <class U>
-  std::vector<uSpInt> SubArrayNonZeros(const SparseStorage<U>& L,const SparseStorage<U>& R,uSpInt FirstRcol,uSpInt LastRcol);
+  std::vector<uSpInt> MultiplySubArrayNonZeros(const SparseStorage<U>& L,const SparseStorage<U>& R,uSpInt FirstRcol,uSpInt LastRcol){
+    //check cols match rows
+    if (L.cols!=R.rows){std::cout << "Trying to multiply arrays with differing dimensions!" << std::endl; abort();}
+    if (FirstRcol > LastRcol || LastRcol > R.cols - 1 ){std::cout << "Requested sub matrix column outside bounds!" << std::endl; abort();}
+
+    std::vector<uSpInt> ans;
+    ans.reserve(LastRcol-FirstRcol + 1);
+
+    std::vector<uSpInt> w(L.rows,0);
+
+    //simplified version of scatter that on;y calculates the nonzeros for each col of the final answer
+    for (uSpInt Rcol=FirstRcol;Rcol<LastRcol+1;++Rcol){
+      uSpInt nz=0;
+      for (uSpInt Ridx=R.p[Rcol];Ridx<R.p[Rcol+1];++Ridx){
+	uSpInt Lcol=R.i[Ridx];
+	for (uSpInt Lidx=L.p[Lcol];Lidx<L.p[Lcol+1];++Lidx){
+	  if (w[L.i[Lidx]]<=Rcol){ //first time for this row/col combination
+	    w[L.i[Lidx]]=Rcol+1;
+	    nz++;
+	  }
+	}
+      }
+      
+      ans.push_back(nz);
+    }
+    return ans;
+  }
   
+  /*
   template <class U>
   SparseStorage<U> SubArrayMultiply(const SparseStorage<U>& L,const SparseStorage<U>& R,uSpInt FirstRcol,uSpInt LastRcol);
   */
@@ -437,9 +463,9 @@ namespace BasicSparse {
       if (w[row]<mark){
 	w[row]=mark; //newentry for this row in col j
 	C.i[nz++]=row;
-	x[row]=beta* (conjugate ? Conj(A.x[idx]) : A.x[idx]);
+	if (x.size()) x[row]=beta* (conjugate ? Conj(A.x[idx]) : A.x[idx]);
       }
-      else x[row]+=beta*(conjugate ? Conj(A.x[idx]) : A.x[idx]);
+      else if (x.size()) x[row]+=beta*(conjugate ? Conj(A.x[idx]) : A.x[idx]);
     }
     return nz;
   }

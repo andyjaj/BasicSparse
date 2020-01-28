@@ -76,7 +76,7 @@ int main(int argc, char** argv){
   std::cout << "transpose again (no conjugate)" <<std::endl;
   A4.transpose();
   A4.print();
-  
+
   std::cout << "Done!" <<std::endl;
 
   std::cout << "Check norm()" <<std::endl;
@@ -92,10 +92,14 @@ int main(int argc, char** argv){
   A4.permute(std::vector<BasicSparse::uSpInt>({{0,4,2,3,1,5,6}}),std::vector<BasicSparse::uSpInt>());
   A4.print();
 
+  std::cout << "Check equals" <<std::endl;
+  BasicSparse::SparseStorage<std::complex<double> > A5=A4;
+  A5.print();
+  
   std::cout << "Check row M.permute(): swap rows 5 and 6 (breaks row ordering!)" <<std::endl;
   A4.permute(std::vector<BasicSparse::uSpInt>({{0,1,2,3,1,6,5}}),std::vector<BasicSparse::uSpInt>());
   A4.print();
-
+  
   std::cout << "Check M.drop(1.0e-10)" <<std::endl;
   A4.drop(1.0e-10);
   A4.print();
@@ -122,6 +126,24 @@ int main(int argc, char** argv){
   BasicSparse::ArrayCatByRow(A4,A4).print();
 
   for (auto p : A4.p){std::cout << p << " ";}
+  std::cout << std::endl;
+
+  A5.transpose().print();
+
+  Transpose(A5).print();
+  
+  std::vector<BasicSparse::uSpInt> nzs1=BasicSparse::MultiplySubArrayNonZeros(A5,Transpose(A5),0,2);
+  
+  for (auto n : nzs1){
+    std::cout << n << " ";
+  }
+  std::cout << std::endl;
+
+  std::vector<BasicSparse::uSpInt> nzs2=BasicSparse::MultiplySubArrayNonZeros(Transpose(A5),A5,0,6);
+  
+  for (auto n : nzs2){
+    std::cout << n << " ";
+  }
   std::cout << std::endl;
   
   return 0;
