@@ -145,6 +145,10 @@ int main(int argc, char** argv){
     std::cout << n << " ";
   }
   std::cout << std::endl;
+
+  BasicSparse::Multiply({1.0,0.0},A5,{1.0,0.0},Transpose(A5),0,0);
+
+  BasicSparse::Multiply({1.0,0.0},Transpose(A5),{1.0,0.0},A5,0,0);
   
   return 0;
 }

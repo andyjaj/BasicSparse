@@ -43,7 +43,7 @@ namespace BasicSparse {
   std::vector<uSpInt> MultiplySubArrayNonZeros(const SparseStorage<T>& L,const SparseStorage<T>& R,uSpInt FirstRcol,uSpInt LastRcol);
   
   template <class T>
-  SparseStorage<T> SubArrayMultiply(const SparseStorage<T>& L,const SparseStorage<T>& R,uSpInt FirstRcol,uSpInt LastRcol);
+  SparseStorage<T> MultiplySubArray(T alpha, const SparseStorage<T>& A, T beta, const SparseStorage<T>& B,uSpInt FirstBcol,uSpInt LastBcol, bool conjA=0, bool conjB=0);
 
   template <class T>
   SparseStorage<T>& ArrayCatByRow(SparseStorage<T>& L,const SparseStorage<T>& R);
@@ -51,6 +51,9 @@ namespace BasicSparse {
   template <class T>
   uSpInt Scatter(const SparseStorage<T>& A, uSpInt j, T beta, std::vector<uSpInt>& w, std::vector<T>& x, uSpInt mark, SparseStorage<T>& C, uSpInt nz, bool conjugate);
 
+  template <class T>
+  uSpInt SimpleScatter(const SparseStorage<T>& L, const SparseStorage<T>& R, uSpInt j, std::vector<uSpInt>& w);
+  
   template<class T>
   T Conj(T val);
   
@@ -391,12 +394,13 @@ namespace BasicSparse {
     //this needs a possible threaded version - maybe in a separate include file
     //do some stuff
 
+    //divide up into sub arrays by grouping columns of B
+    // for each subarray
+    
     //ascertain the number of nonzero elements in the answer
-    //uSpInt ans_nz=Multiply_nz_count(A,B);
     
-    //decide on strategy ((A B)^T)^T or (B^T A^T)^T 
-    
-    return SparseStorage<U>(A.rows,B.cols,std::vector<uSpInt>(),std::vector<uSpInt>(),std::vector<U>(),1);
+    return MultiplySubArray(alpha, A, beta, B, 0, B.cols-1, conjA, conjB);
+
   }
 
   template <class U>
@@ -410,34 +414,44 @@ namespace BasicSparse {
 
     std::vector<uSpInt> w(L.rows,0);
 
-    //simplified version of scatter that on;y calculates the nonzeros for each col of the final answer
     for (uSpInt Rcol=FirstRcol;Rcol<LastRcol+1;++Rcol){
-      uSpInt nz=0;
-      for (uSpInt Ridx=R.p[Rcol];Ridx<R.p[Rcol+1];++Ridx){
-	uSpInt Lcol=R.i[Ridx];
-	for (uSpInt Lidx=L.p[Lcol];Lidx<L.p[Lcol+1];++Lidx){
-	  if (w[L.i[Lidx]]<=Rcol){ //first time for this row/col combination
-	    w[L.i[Lidx]]=Rcol+1;
-	    nz++;
-	  }
-	}
-      }
-      
-      ans.push_back(nz);
+      //simplified version of scatter that only calculates the nonzeros for each col
+      ans.push_back(SimpleScatter(L,R,Rcol,w));
     }
     return ans;
   }
   
-  /*
   template <class U>
-  SparseStorage<U> SubArrayMultiply(const SparseStorage<U>& L,const SparseStorage<U>& R,uSpInt FirstRcol,uSpInt LastRcol);
-  */
+  SparseStorage<U>  MultiplySubArray(U alpha, const SparseStorage<U>& A, U beta, const SparseStorage<U>& B,uSpInt FirstBcol,uSpInt LastBcol, bool conjA, bool conjB){
+
+    std::vector<uSpInt> nzs=MultiplySubArrayNonZeros(A,B,FirstBcol,LastBcol);
+    uSpInt ans_nz=std::accumulate(nzs.begin(),nzs.end(),0);
+
+    //decide on strategy ((A B)^T)^T or (B^T A^T)^T 
+
+    std::vector<uSpInt> i(ans_nz);
+    std::vector<uSpInt> p;
+    std::vector<U> x(ans_nz);
+
+    //std::cout << ans_nz << " nonzeros for ans versus " << A.nonzeros() << " + " << B.nonzeros() << std::endl;
+    if (ans_nz > A.nonzeros()+B.nonzeros()){std::cout << "Using (B^T A^T)^T" << std::endl;
+
+
+    }
+    else {std::cout << "Using ((A B)^T)^T" << std::endl;
+
+    }
+
+
+    
+    return SparseStorage<U>(A.rows,LastBcol-FirstBcol+1,std::vector<uSpInt>(),std::vector<uSpInt>(),std::vector<U>(),1);
+  }
   
   template <class U>
   SparseStorage<U>& ArrayCatByRow(SparseStorage<U>& L,const SparseStorage<U>& R){
     //take two arrays with the same number of rows, and join them so that cols= L.cols+R.cols
-
-    if (L.rows!=R.rows) {std::cout << "Trying to join arrays with differing numbers of rows!" << std::endl; abort();}
+    if (!L.compressed() || !R.compressed()) {std::cerr << "Matrices for row concatenation are not compressed!" << std::endl; abort();}
+    if (L.rows!=R.rows) {std::cerr << "Trying to join arrays with differing numbers of rows!" << std::endl; abort();}
     
     uSpInt oldLnz=L.nonzeros();
 
@@ -456,7 +470,7 @@ namespace BasicSparse {
   
   template <class U>
   uSpInt Scatter(const SparseStorage<U>& A, uSpInt j, U beta, std::vector<uSpInt>& w, std::vector<U>& x, uSpInt mark, SparseStorage<U>& C, uSpInt nz, bool conjugate){
-    if(!A.compressed()) {std::cerr << "Trying to Scatter for array not in csc form" << std::endl; abort();}
+    if(!A.compressed()) {std::cerr << "Trying to scatter for array not in csc form" << std::endl; abort();}
 
     for (uSpInt idx=A.p[j]; idx<A.p[j+1];++idx){
       uSpInt row = A.i[idx];
@@ -488,6 +502,28 @@ namespace BasicSparse {
   {
     lhs -= rhs;
     return lhs;
+  }
+
+  template <class U>
+  uSpInt SimpleScatter(const SparseStorage<U>& L, const SparseStorage<U>& R, uSpInt j, std::vector<uSpInt>& w){
+    if(!L.compressed() || !R.compressed()) {std::cerr << "Trying to Scatter for array not in csc form" << std::endl; abort();}
+    if (L.cols!=R.rows){std::cerr << "Trying to multiply arrays with differing dimensions!" << std::endl; abort();}
+    if (j > R.cols - 1 ){std::cerr << "Requested column outside bounds!" << std::endl; abort();}
+    if (w.size()!= L.rows){std::cerr << "Work array is of incorrect length" << std::endl; abort();}
+    
+    //simplified version of scatter that only calculates the nonzeros for each col of the final answer
+    uSpInt Rcol=j;
+    uSpInt nz=0;
+    for (uSpInt Ridx=R.p[Rcol];Ridx<R.p[Rcol+1];++Ridx){
+      uSpInt Lcol=R.i[Ridx];
+      for (uSpInt Lidx=L.p[Lcol];Lidx<L.p[Lcol+1];++Lidx){
+	if (w[L.i[Lidx]]!=Rcol+1){ //first time for this row/col combination
+	  w[L.i[Lidx]]=Rcol+1;
+	  nz++;
+	}
+      }
+    }
+    return nz;
   }
   
 }
