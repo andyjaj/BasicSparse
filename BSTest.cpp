@@ -9,17 +9,54 @@ template<class T>
 int SparseStructCheck(BasicSparse::SparseStruct<T>& SS,size_t rows,size_t cols,size_t nz,bool compressed);
 
 template<class T>
-bool SparseStructCheck_i(BasicSparse::SparseStruct<T>& SS,size_t idx,size_t val){return !(SS.i.at(idx)==val);}
+bool SparseStructCheck_i(BasicSparse::SparseStruct<T>& SS,size_t idx,size_t val){return !(SS.i[idx]==val);}
 
 template<class T>
-bool SparseStructCheck_p(BasicSparse::SparseStruct<T>& SS,size_t idx,size_t val){return !(SS.p.at(idx)==val);}
+bool SparseStructCheck_p(BasicSparse::SparseStruct<T>& SS,size_t idx,size_t val){return !(SS.p[idx]==val);}
 
 template<class T>
-bool SparseStructCheck_x(BasicSparse::SparseStruct<T>& SS,size_t idx,T val){return !(SS.x.at(idx)==val);}
+bool SparseStructCheck_x(BasicSparse::SparseStruct<T>& SS,size_t idx,T val){return !(SS.x[idx]==val);}
 
 //unit test file
 int main(int argc, char** argv){
 
+  BasicSparse::UnVector<int> uv(10);
+  for (auto i :uv){
+    std::cout << i << " "; 
+  }
+  std::cout << ", capacity = " << uv.capacity() << std::endl;
+
+  int count=0;
+  for (auto& i :uv){
+    i=++count;
+  }
+  for (auto i :uv){
+    std::cout << i << " "; 
+  }
+  std::cout << ", capacity = " << uv.capacity() << std::endl;
+
+  uv.push_back(11);
+  for (auto i :uv){
+    std::cout << i << " "; 
+  }
+  std::cout << ", capacity = " << uv.capacity() << std::endl;
+
+  BasicSparse::UnVector<int> uv0(0);
+  for (auto i :uv0){
+    std::cout << i << " "; 
+  }
+  std::cout << ", capacity = " << uv0.capacity() << std::endl;
+
+  uv0.push_back(1);
+  for (auto i :uv0){
+    std::cout << i << " "; 
+  }
+  std::cout << ", capacity = " << uv0.capacity() << std::endl;
+
+
+  
+  //abort();
+  
   BasicSparse::SparseStruct<int> A1 {2,3,0};
   std::cout << "SparseStruct<int> construction error: " << SparseStructCheck(A1,2,3,0,0) <<std::endl;
 
@@ -27,10 +64,10 @@ int main(int argc, char** argv){
   BasicSparse::SparseStruct<std::complex<double>> A2 {17,4,3}; //reserve 3, but doesn't lead to size() being 3!
   std::cout << "SparseStruct<std::complex<double>> construction error: " << SparseStructCheck(A2,17,4,0,0) <<std::endl;
 
-  std::vector<BasicSparse::uSpInt> ivec {{4,6,3,0,5,5}};
-  std::vector<BasicSparse::uSpInt> jvec {{2,1,0,2,1,1}};
-  std::vector<int > xvec_int{{2,0,1,19,-12,12}};
-  std::vector<std::complex<double> > xvec_cd{{-2.3e-15,std::complex<double>(1.1,3.0),0.0,std::complex<double>(0.0,-0.005),std::complex<double>(4.3,-81.2),std::complex<double>(-4.3,81.2)}};
+  BasicSparse::UnVector<BasicSparse::uSpInt> ivec {{4,6,3,0,5,5}};
+  BasicSparse::UnVector<BasicSparse::uSpInt> jvec {{2,1,0,2,1,1}};
+  BasicSparse::UnVector<int > xvec_int{{2,0,1,19,-12,12}};
+  BasicSparse::UnVector<std::complex<double> > xvec_cd{{-2.3e-15,std::complex<double>(1.1,3.0),0.0,std::complex<double>(0.0,-0.005),std::complex<double>(4.3,-81.2),std::complex<double>(-4.3,81.2)}};
 
   BasicSparse::SparseStruct<int> A3 {7,3,ivec,jvec,xvec_int};  
   std::cout << "Preallocated arrays SparseStruct<int> construction error: " << SparseStructCheck(A3,7,3,6,0) <<std::endl;
@@ -87,11 +124,11 @@ int main(int argc, char** argv){
   std::cout << "Done!" <<std::endl;
 
   std::cout << "Check column M.permute(): swap cols 0 and 2 " <<std::endl;
-  A4.permute(std::vector<BasicSparse::uSpInt>(),std::vector<BasicSparse::uSpInt>({{2,1,0}}));
+  A4.permute(BasicSparse::UnVector<BasicSparse::uSpInt>(),BasicSparse::UnVector<BasicSparse::uSpInt>({{2,1,0}}));
   A4.print();
 
   std::cout << "Check row M.permute(): swap rows 4 and 1 (note row 1 was empty)" <<std::endl;
-  A4.permute(std::vector<BasicSparse::uSpInt>({{0,4,2,3,1,5,6}}),std::vector<BasicSparse::uSpInt>());
+  A4.permute(BasicSparse::UnVector<BasicSparse::uSpInt>({{0,4,2,3,1,5,6}}),BasicSparse::UnVector<BasicSparse::uSpInt>());
   A4.print();
 
   std::cout << "Check equals" <<std::endl;
@@ -99,7 +136,7 @@ int main(int argc, char** argv){
   A5.print();
   
   std::cout << "Check row M.permute(): swap rows 5 and 6 (breaks row ordering!)" <<std::endl;
-  A4.permute(std::vector<BasicSparse::uSpInt>({{0,1,2,3,1,6,5}}),std::vector<BasicSparse::uSpInt>());
+  A4.permute(BasicSparse::UnVector<BasicSparse::uSpInt>({{0,1,2,3,1,6,5}}),BasicSparse::UnVector<BasicSparse::uSpInt>());
   A4.print();
   
   std::cout << "Check M.drop(1.0e-10)" <<std::endl;
@@ -134,14 +171,16 @@ int main(int argc, char** argv){
 
   Transpose(A5).print();
   
-  std::vector<BasicSparse::uSpInt> nzs1=BasicSparse::MultiplySubArrayNonZeros(A5,Transpose(A5),0,2);
+  BasicSparse::UnVector<BasicSparse::uSpInt> nzs1(A5.rows);
+  BasicSparse::MultiplySubArrayNonZeros(nzs1,A5,Transpose(A5),0,2);
   
   for (auto n : nzs1){
     std::cout << n << " ";
   }
   std::cout << std::endl;
 
-  std::vector<BasicSparse::uSpInt> nzs2=BasicSparse::MultiplySubArrayNonZeros(Transpose(A5),A5,0,6);
+  BasicSparse::UnVector<BasicSparse::uSpInt> nzs2(A5.cols);
+  BasicSparse::MultiplySubArrayNonZeros(nzs2,Transpose(A5),A5,0,6);
   
   for (auto n : nzs2){
     std::cout << n << " ";
@@ -164,7 +203,10 @@ void SparseStructInfo(BasicSparse::SparseStruct<T>& SS){
 template<class T>
 int SparseStructCheck(BasicSparse::SparseStruct<T>& SS,size_t rows,size_t cols,size_t nz,bool compressed){
   
-  if (rows==SS.rows && cols==SS.cols && nz == SS.nonzeros() && compressed == SS.compressed()){
+  if (rows==SS.rows
+      && cols==SS.cols
+      && nz == SS.nonzeros()
+      && compressed == SS.compressed()){
     if (!compressed && SS.i.size()!=SS.p.size()){
       return -1;
     }
