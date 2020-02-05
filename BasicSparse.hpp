@@ -48,13 +48,13 @@ namespace BasicSparse {
   void MultiplySubArrayNonZeros(UnVector<uSpInt>& nzs, const SparseStruct<T>& L,const SparseStruct<T>& R,uSpInt FirstRcol,uSpInt LastRcol);
   
   template <class T>
-  void MultiplySubArray(UnVector<uSpInt>& i, UnVector<uSpInt>& p, UnVector<T>& x, T alpha, const SparseStruct<T>& A, T beta, const SparseStruct<T>& B,uSpInt FirstBcol,uSpInt LastBcol, const UnVector<uSpInt>& nzs, bool conjA=0, bool conjB=0);
+  void MultiplySubArray(UnVector<uSpInt>& i, UnVector<uSpInt>& p, UnVector<T>& x, T alpha, const SparseStruct<T>& A, T beta, const SparseStruct<T>& B,uSpInt FirstBcol,uSpInt LastBcol, bool conjA=0, bool conjB=0);
 
   template <class T>
   SparseStruct<T>& ArrayCatByRow(SparseStruct<T>& L,const SparseStruct<T>& R);
   
   template <class T>
-  uSpInt Scatter(const SparseStruct<T>& A, uSpInt j, T beta, UnVector<uSpInt>& w, UnVector<T>& x, uSpInt mark, SparseStruct<T>& C, uSpInt nz, bool conjugate);
+  uSpInt Scatter(const SparseStruct<T>& A, uSpInt j, T beta, UnVector<uSpInt>& w, UnVector<T>& x, uSpInt mark, UnVector<uSpInt>& i, uSpInt nz, bool conjugate);
 
   template <class T>
   uSpInt SimpleScatter(const SparseStruct<T>& L, const SparseStruct<T>& R, uSpInt j, UnVector<uSpInt>& w);
@@ -124,18 +124,11 @@ namespace BasicSparse {
 
   template <class U>  
   bool SparseStruct<U>::valid() const {
-    /*for (uSpInt a=0;a<i.size();++a){
-      std::cout << a << " " << i[a] << " " ;
-      }*/
-    std::cout << std::endl;
-    
     if (compressed_
 	&& i.size()==x.size()
 	&& p.size()==cols+1){
-      if (p.back()
-	  ==nonzeros()) return 1;}
+      if (p.back()==nonzeros()) return 1;}
     else if (i.size()==p.size() && p.size()==x.size()) return 1;
-
     return 0;
   }
   
@@ -409,8 +402,8 @@ namespace BasicSparse {
     uSpInt nz=0;
     for (uSpInt col=0; col<cols; ++col){
       C.p[col]=nz; //col of C starts here
-      nz=Scatter(A,col,alpha,w,x,col+1,C,nz,conjA); //updates nz and populates
-      nz=Scatter(B,col,beta,w,x,col+1,C,nz,conjB); //updates nz and populates
+      nz=Scatter(A,col,alpha,w,x,col+1,C.i,nz,conjA); //updates nz and populates
+      nz=Scatter(B,col,beta,w,x,col+1,C.i,nz,conjB); //updates nz and populates
       for(uSpInt idx = C.p[col] ; idx < nz ; ++idx){
 	C.x[idx] = x[C.i[idx]];//use working x vector to populate C.x[]
       }
@@ -429,46 +422,46 @@ namespace BasicSparse {
     //do some stuff
     
     //ascertain the number of nonzero elements in the answer
-    UnVector<uSpInt> nzs(B.cols+1);
+    UnVector<uSpInt> nzs(B.cols);
     MultiplySubArrayNonZeros(nzs,A,B,0,B.cols-1);
-    nzs[B.cols]=0;
-    uSpInt ans_nz=std::accumulate(nzs.begin(),nzs.end(),0);
+
+    UnVector<uSpInt> p(B.cols+1);
+    p[0]=0;
+    std::partial_sum(nzs.begin(),nzs.end(),p.begin()+1);
+    
+    uSpInt ans_nz=p.back();//std::accumulate(nzs.begin(),nzs.end(),0);
+
+    std::cout << ans_nz << ":" << A.nonzeros() << "+" << B.nonzeros() <<std::endl;
     
     //decide on strategy  (B^T A^T)^T or ((A B)^T)^T
     //For 1st case threaded version, we want to avoid doing an extra transpose of B for each thread!
 
-    bool variant=0;
-
     UnVector<uSpInt> i(ans_nz);
-    UnVector<uSpInt> p;
     UnVector<U> x(ans_nz);
     
     if (ans_nz > A.nonzeros()+B.nonzeros()){std::cout << "Using (B^T A^T)^T" << std::endl;
-      variant=1;
-      p=UnVector<uSpInt>(A.rows+1);
-      p[0]=0;
       SparseStruct<U> L=Transpose(B);
       SparseStruct<U> R=TransposeCols(A,0,A.cols-1);
       //redo nzs because of the transpose
-      nzs=UnVector<uSpInt>(A.rows+1);
-      nzs[A.rows]=0;
+      nzs.resize(A.rows);
       MultiplySubArrayNonZeros(nzs,L,R,0,R.cols-1);
+      p.resize(A.rows+1);
+      std::partial_sum(nzs.begin(),nzs.end(),p.begin()+1);
+      if (ans_nz!= p.back()){std::cout << "Inconsistent number of nonzeros in ans!" <<std::endl; abort();}      
       //do multiply
       
-      MultiplySubArray(i,p,x,beta, L, alpha, R, 0, A.cols-1, nzs, conjB, conjA);
+      MultiplySubArray(i,p,x,beta, L, alpha, R, 0, R.cols-1, conjB, conjA);
 
       SparseStruct<U> C(B.cols,A.rows,i,p,x,1);
       return C.transpose();
       
     }
     else {std::cout << "Using ((A B)^T)^T" << std::endl;
-      p=UnVector<uSpInt>(B.cols+1);
-      p[0]=0;
       const SparseStruct<U>& L=A;
-      SparseStruct<U> R=TransposeCols(B,0,B.cols-1);
-      nzs.push_back(ans_nz);
+      const SparseStruct<U>& R=B;
+
       //do multiply
-      MultiplySubArray(i,p,x,alpha, A, beta, B, 0, B.cols-1, nzs, conjA, conjB);
+      MultiplySubArray(i,p,x,alpha, L, beta, R, 0, R.cols-1, conjA, conjB);
       SparseStruct<U> C(A.rows,B.cols,i,p,x,1);
       return C.transpose().transpose();
     }
@@ -491,11 +484,26 @@ namespace BasicSparse {
   }
   
   template <class U>
-  void MultiplySubArray(UnVector<uSpInt>& i, UnVector<uSpInt>& p, UnVector<U>& x, U ml, const SparseStruct<U>& L, U mr, const SparseStruct<U>& R,uSpInt FirstRcol,uSpInt LastRcol, const UnVector<uSpInt>& nzs, bool conjL, bool conjR){
+  void MultiplySubArray(UnVector<uSpInt>& i, UnVector<uSpInt>& p, UnVector<U>& x, U ml, const SparseStruct<U>& L, U mr, const SparseStruct<U>& R,uSpInt FirstRcol,uSpInt LastRcol, bool conjL, bool conjR){
 
-    uSpInt ans_nz=nzs[LastRcol+1]-nzs[FirstRcol]; //number of nonzeros in answer
+    //uSpInt ans_nz=p[LastRcol+1]-p[FirstRcol]; //number of nonzeros in answer
+
+    /*UnVector<uSpInt> false_p(LastRcol+2-FirstRcol);
+    uSpInt offset=p.begin()[0];
+    std::transform(p.begin()+FirstRcol,p.begin()+LastRcol+2,false_p.begin(),[=](uSpInt elem) { return elem-offset; });*/
+
+    UnVector<uSpInt> w(L.rows,0);
+    UnVector<U> local_x(L.rows);
     
-    //std::cout << ans_nz << " nonzeros for ans versus " << A.nonzeros() << " + " << B.nonzeros() << std::endl;
+    uSpInt nz=0;//p[FirstRcol];
+    
+    for (uSpInt j=FirstRcol;j<LastRcol+1;++j){
+      for (uSpInt idx=R.p[j] ;idx<R.p[j+1] ;++idx){
+	nz= Scatter(L,R.i[idx], (conjR ? conj(R.x[idx]) : R.x[idx])*ml*mr,w,local_x,j+1,i,nz,conjL);
+      }
+      for (uSpInt idx=p[j] ; idx < nz ; ++idx) x[idx]=local_x[i[idx]];
+    }
+
     
   }
   
@@ -508,16 +516,11 @@ namespace BasicSparse {
     uSpInt oldLnz=L.nonzeros();
 
     //update p's
-    //L.p.insert(L.p.end(),R.p.begin()+1,R.p.end());//+1 is vital here
-    
     L.p.append(R.p.begin()+1,R.p.size()-1);
     
     std::transform(L.p.begin()+L.cols+1,L.p.end(),L.p.begin()+L.cols+1,[=](uSpInt p) { return p+oldLnz; });
 
     L.cols+=R.cols;
-    
-    //L.i.insert(L.i.end(),R.i.begin(),R.i.end());
-    //L.x.insert(L.x.end(),R.x.begin(),R.x.end());
 
     L.i.append(R.i.begin(),R.i.size());
     L.x.append(R.x.begin(),R.x.size());
@@ -527,14 +530,14 @@ namespace BasicSparse {
   }
   
   template <class U>
-  uSpInt Scatter(const SparseStruct<U>& A, uSpInt j, U beta, UnVector<uSpInt>& w, UnVector<U>& x, uSpInt mark, SparseStruct<U>& C, uSpInt nz, bool conjugate){
+  uSpInt Scatter(const SparseStruct<U>& A, uSpInt j, U beta, UnVector<uSpInt>& w, UnVector<U>& x, uSpInt mark, UnVector<uSpInt>& i, uSpInt nz, bool conjugate){
     if(!A.compressed()) {std::cerr << "Trying to scatter for array not in csc form" << std::endl; abort();}
 
     for (uSpInt idx=A.p[j]; idx<A.p[j+1];++idx){
       uSpInt row = A.i[idx];
       if (w[row]<mark){
 	w[row]=mark; //newentry for this row in col j
-	C.i[nz++]=row;
+	i[nz++]=row;
 	if (x.size()) x[row]=beta* (conjugate ? Conj(A.x[idx]) : A.x[idx]);
       }
       else if (x.size()) x[row]+=beta*(conjugate ? Conj(A.x[idx]) : A.x[idx]);

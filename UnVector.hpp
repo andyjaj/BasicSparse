@@ -65,6 +65,13 @@ namespace BasicSparse {
       }
     }
 
+    UnVector(const T* begin_ptr, const T* end_ptr) : size_(end_ptr-begin_ptr), capacity_(size_),storage_(allocate_()){
+      std::size_t i=0;
+      for (auto ptr =begin_ptr; ptr!=end_ptr;++ptr,++i){
+	storage_[i]=begin_ptr[i];
+      }
+    }
+
     //copy constructor
     UnVector(const UnVector<T>& other) : size_(other.size_), capacity_(other.capacity_),storage_(capacity_ ? new T[capacity_] : nullptr) {
       std::copy(other.storage_,other.storage_+size_,storage_);

@@ -18,7 +18,7 @@ template<class T>
 bool SparseStructCheck_x(BasicSparse::SparseStruct<T>& SS,size_t idx,T val){return !(SS.x[idx]==val);}
 
 //unit test file
-int main(int argc, char** argv){
+int main(){
   
   BasicSparse::UnVector<int> uv(10,0);
   for (auto i :uv){
@@ -146,7 +146,7 @@ int main(int argc, char** argv){
   A4.drop(1.0e-10);
   A4.print();
 
-  std::cout << "Check addition M+M" <<std::endl;
+  std::cout << "Check addition M - conj(M)" <<std::endl;
   Add(std::complex<double>(1.0),A4,std::complex<double>(-1.0),A4,0,1).print();
 
   std::cout << "Check M+=M" <<std::endl;
@@ -190,9 +190,11 @@ int main(int argc, char** argv){
   }
   std::cout << std::endl;
 
-  BasicSparse::Multiply({1.0,0.0},A5,{1.0,0.0},Transpose(A5),0,0);
+  BasicSparse::Multiply({1.0,0.0},A5,{1.0,0.0},Transpose(A5),0,0).print();
 
-  BasicSparse::Multiply({1.0,0.0},Transpose(A5),{1.0,0.0},A5,0,0);
+
+  
+  BasicSparse::Multiply({1.0,0.0},Transpose(A5),{1.0,0.0},A5,0,0).print();
   
   return 0;
 }
