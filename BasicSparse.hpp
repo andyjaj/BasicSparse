@@ -81,10 +81,14 @@ namespace BasicSparse {
     UnVector<T> x; // the actual values in the array
   private:
     bool compressed_; //is the array compressed sparse column (true), or is it in triplet form (false)
-
+    
   public:        
     //constructor for uncompressed version
-    SparseStruct(uSpInt r, uSpInt c, uSpInt nz_reserve=0) : rows(r), cols(c), i(UnVector<uSpInt>(nz_reserve)),p(UnVector<uSpInt>(nz_reserve)),x(UnVector<T>(nz_reserve)),compressed_(0) {} //construct an empty triplet
+    SparseStruct(uSpInt r, uSpInt c, uSpInt nz_reserve=0) : rows(r), cols(c), i(UnVector<uSpInt>(nz_reserve)),p(UnVector<uSpInt>(nz_reserve)),x(UnVector<T>(nz_reserve)),compressed_(0) {
+      i.resize(0);
+      p.resize(0);
+      x.resize(0);//allocate containers, but make it clear no useful data in them yet
+    } //construct an empty triplet
     //constructor from existing data
     SparseStruct(uSpInt r, uSpInt c, const UnVector<uSpInt>& ivec, const UnVector<uSpInt>& pvec, const UnVector<T>& xvec, bool cmp=0) : rows(r), cols(c), i(ivec), p(pvec), x(xvec), compressed_(cmp) {} 
     SparseStruct(uSpInt r, uSpInt c, UnVector<uSpInt>&& ivec, UnVector<uSpInt>&& pvec, UnVector<T>&& xvec, bool cmp=0) : rows(r), cols(c), i(std::move(ivec)), p(std::move(pvec)), x(std::move(xvec)), compressed_(cmp) {} 
@@ -120,6 +124,11 @@ namespace BasicSparse {
 
   template <class U>  
   bool SparseStruct<U>::valid() const {
+    /*for (uSpInt a=0;a<i.size();++a){
+      std::cout << a << " " << i[a] << " " ;
+      }*/
+    std::cout << std::endl;
+    
     if (compressed_
 	&& i.size()==x.size()
 	&& p.size()==cols+1){
@@ -277,7 +286,7 @@ namespace BasicSparse {
       if (!nonzeros())
 	std::cout <<"Empty array"<<std::endl;
     }
-    else std::cout << "Invalid array" <<std::endl;
+    else std::cout << std::endl << "Invalid array!" <<std::endl;
     
     std::cout << std::endl;
   }
@@ -500,6 +509,7 @@ namespace BasicSparse {
 
     //update p's
     //L.p.insert(L.p.end(),R.p.begin()+1,R.p.end());//+1 is vital here
+    
     L.p.append(R.p.begin()+1,R.p.size()-1);
     
     std::transform(L.p.begin()+L.cols+1,L.p.end(),L.p.begin()+L.cols+1,[=](uSpInt p) { return p+oldLnz; });

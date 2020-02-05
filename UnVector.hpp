@@ -1,5 +1,6 @@
 /** @file UnVector.hpp 
  * A container class similar to std vector, but not as clever, and with a simple array as the underlying storage
+ * The main purpose it to allow non-sequential writing to an allocated, but not initialised array.
  */
 #ifndef UnVector_H
 #define UnVector_H
@@ -17,16 +18,20 @@ namespace BasicSparse {
   class UnVector{
   private:
     std::size_t size_;
-    T* storage_;
     std::size_t capacity_;
-
-    T* allocate_(std::size_t n){
-      if (n) {capacity_=n;return new T[n];}
-      else {capacity_=0;return nullptr;}
+    T* storage_;
+    
+    T* allocate_(){
+      if (capacity_) {
+	T* ptr= new T[capacity_];
+	return ptr;
+      }
+      else return nullptr;
     }
 
     void reallocate_(std::size_t new_capacity){
-      T* new_storage=allocate_(new_capacity);
+      capacity_=new_capacity;
+      T* new_storage=new_capacity ? new T[new_capacity] : nullptr;
       for (std::size_t i=0;i<size_;++i){
 	new_storage[i]=storage_[i];
       }
@@ -43,18 +48,31 @@ namespace BasicSparse {
     
   public:
 
-    UnVector() : size_(0),storage_(allocate_(2)){};
-    UnVector(std::size_t n) : size_(n), storage_(allocate_(n)){};
+    UnVector() : size_(0),capacity_(2),storage_(allocate_()){}
+    
+    UnVector(std::size_t n) : size_(n), capacity_(n), storage_(allocate_()){}
+    
     UnVector(std::size_t n, const T& val) : UnVector(n) {
-      for (auto i=0; i<n; ++i){
+      for (std::size_t i=0; i<n; ++i){
 	storage_[i]=val;
       }
-    };
+    }
+    
     UnVector(const std::initializer_list<T>& l) : UnVector(l.size()){
       std::size_t idx=0;
       for (auto& elem : l){
 	storage_[idx++]=elem;
       }
+    }
+
+    //copy constructor
+    UnVector(const UnVector<T>& other) : size_(other.size_), capacity_(other.capacity_),storage_(capacity_ ? new T[capacity_] : nullptr) {
+      std::copy(other.storage_,other.storage_+size_,storage_);
+    }
+
+    //move constructor
+    UnVector(UnVector<T>&& other) noexcept : UnVector<T>() {
+      swap(other);
     }
     
     ~UnVector(){
@@ -77,11 +95,11 @@ namespace BasicSparse {
     }
     
     T& back(){
-      return *(storage_-1);
+      return storage_[size_-1];
     }
 
     const T& back() const {
-      return *(storage_-1);
+      return storage_[size_-1];
     }
     
     void push_back(const T& val){
@@ -94,61 +112,38 @@ namespace BasicSparse {
       size_=s;
     };
 
-    UnVector<T>& append(const UnVector<T>& to_append){
-      if (capacity_< size_+to_append.size_) reallocate_(size_+to_append.size_);
-      for (std::size_t i=0;i< to_append.size_; ++i){
-	storage_[size_+i]=to_append[i];
-      }
-      size_+=to_append.size_;
-      return *this;
-    }
-
     UnVector<T>& append(const T* begin_ptr, std::size_t num){
-      if (capacity_< size_+num) reallocate_(size_+num);
-      for (std::size_t i=0;i< num; ++i){
-	storage_[size_+i]=*(begin_ptr+i);
+
+      if (capacity_ < size_+num){       //use temp buffer, in case we are appending to itself
+	T* buffer = new T[size_+num];
+	for (std::size_t i=0;i<size_;++i) buffer[i]=storage_[i];
+	for (std::size_t i=0;i<num; ++i) buffer[size_+i]=begin_ptr[i];
+	std::swap(buffer,storage_);
+	capacity_=size_+num;
+	delete[] buffer;
       }
+      else {
+	for (std::size_t i=0;i< num; ++i)  storage_[size_+i]=begin_ptr[i];
+      }
+
       size_+=num;
       return *this;
     }
+
+    UnVector<T>& append(const UnVector<T>& to_append){
+
+      return this->append(to_append.begin(),to_append.size());
+      
+    }
     
     T* begin(){return storage_;}
-    T* end(){return &(storage_[size_]);}
+    T* end(){return storage_ + size_/*&(storage_[size_])*/;}
 
     const T* begin() const {return storage_;}
-    const T* end() const {return &(storage_[size_]);}
+    const T* end() const {return storage_ + size_/*&(storage_[size_])*/;}
 
     std::size_t size() const {return size_;}
     std::size_t capacity() const {return capacity_;}
     
   };
-
-  /*template <typename T, typename A=std::allocator<T>>
-  class default_init_allocator : public A {
-    typedef std::allocator_traits<A> a_t;
-  public:
-    template <typename U> struct rebind {
-      using other =
-	default_init_allocator<
-        U, typename a_t::template rebind_alloc<U>
-	>;
-    };
-    
-    using A::A;
-    
-    template <typename U>
-    void construct(U* ptr)
-      noexcept(std::is_nothrow_default_constructible<U>::value) {
-      ::new(static_cast<void*>(ptr)) U;
-    }
-    template <typename U, typename...Args>
-    void construct(U* ptr, Args&&... args) {
-      a_t::construct(static_cast<A&>(*this),
-		     ptr, std::forward<Args>(args)...);
-    }
-  };
-
-  template<class T>
-  using UnVector=std::vector<T,default_init_allocator<T> >;
-  */
 }
